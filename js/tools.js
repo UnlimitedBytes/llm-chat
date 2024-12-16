@@ -34,7 +34,7 @@ export class ToolManager {
         return Array.from(this.enabledTools).map(toolName => ({
             type: "function",
             function: {
-                name: this.availableTools[toolName].name,
+                name: toolName,
                 description: this.availableTools[toolName].description,
                 parameters: this.availableTools[toolName].parameters
             }
