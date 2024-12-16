@@ -223,7 +223,7 @@ export class MessageHandler {
 
         const title = document.createElement('span');
         title.className = 'font-medium text-yellow-700 dark:text-yellow-300';
-        title.textContent = `Tool Request: ${toolCall.function.name}`;
+        title.textContent = `Tool Request: ${toolCall.function.name || 'Unknown Tool'}`;
 
         const buttonGroup = document.createElement('div');
         buttonGroup.className = 'flex gap-2';

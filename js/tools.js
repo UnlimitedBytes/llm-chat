@@ -44,6 +44,14 @@ export class ToolManager {
     async executeTool(toolName, args) {
         const tool = this.availableTools[toolName];
         if (!tool) throw new Error(`Tool ${toolName} not found`);
-        return await tool.execute(JSON.parse(args));
+        if (typeof args === 'string') {
+            try {
+                args = JSON.parse(args);
+            } catch (error) {
+                console.error('Failed to parse tool arguments:', error);
+                throw new Error('Invalid tool arguments');
+            }
+        }
+        return await tool.execute(args);
     }
 }

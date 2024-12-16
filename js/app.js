@@ -186,6 +186,8 @@ class ChatApp {
             ...this.messageHistory
         ];
 
+        let currentMessage = '';
+        let currentToolCall = null;
         try {
             const enabledTools = this.toolManager.getEnabledTools();
             const requestBody = {
@@ -240,23 +242,48 @@ class ChatApp {
                         if (!data?.choices?.[0]?.delta) continue;
 
                         const { delta } = data.choices[0];
-
-                        if (delta.tool_calls) {
-                            const toolCall = delta.tool_calls[0];
-                            const result = await this.handleToolCall(toolCall);
-
-                            if (result) {
-                                messages.push({
-                                    role: 'tool',
-                                    name: toolCall.function.name,
-                                    content: result
-                                });
-                            }
-                        }
+                        const finishReason = data.choices[0].finish_reason;
 
                         if (delta.content) {
                             currentMessage += delta.content;
                             this.messageHandler.updateLastMessage(currentMessage, 'llm');
+                        }
+
+                        if (delta.tool_calls) {
+                            const toolCallDelta = delta.tool_calls[0];
+
+                            if (!currentToolCall) {
+                                currentToolCall = {
+                                    ...toolCallDelta,
+                                    function: {
+                                        name: '',
+                                        arguments: ''
+                                    }
+                                };
+                            }
+
+                            if (toolCallDelta.function) {
+                                if (toolCallDelta.function.name) {
+                                    currentToolCall.function.name += toolCallDelta.function.name;
+                                }
+                                if (toolCallDelta.function.arguments) {
+                                    currentToolCall.function.arguments += toolCallDelta.function.arguments;
+                                }
+                            }
+                        }
+
+                        if (finishReason === 'tool_calls') {
+                            if (currentToolCall) {
+                                const result = await this.handleToolCall(currentToolCall);
+                                if (result) {
+                                    messages.push({
+                                        role: 'tool',
+                                        name: currentToolCall.function.name,
+                                        content: result
+                                    });
+                                }
+                                currentToolCall = null;
+                            }
                         }
                     } catch (e) {
                         console.debug('Skipping invalid SSE data:', e);
