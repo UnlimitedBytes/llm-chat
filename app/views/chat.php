@@ -21,6 +21,8 @@
                         <option value="creative">Creative Mode</option>
                         <option value="technical">Technical Mode</option>
                         <option value="analytical">Analytical Mode</option>
+                        <option value="antispam">Anti-Spam Mode</option>
+                        <option value="moderate">Moderate Mode</option>
                     </select>
                 </div>
                 <div class="flex items-center gap-4">

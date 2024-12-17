@@ -9,6 +9,9 @@ if (defined('DEVELOPMENT') && DEVELOPMENT === true) {
     ini_set('display_errors', 0);
 }
 
+$dotenv = Dotenv\Dotenv::createImmutable(__DIR__ . '/..');
+$dotenv->load();
+
 // Initialize Flight configuration
 Flight::set('flight.views.path', __DIR__ . '/views');
 Flight::set('flight.log_errors', true);
