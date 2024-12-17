@@ -2,6 +2,12 @@
 
 A modern, feature-rich chat interface for Large Language Models (LLM) with support for multiple models, conversation modes, and file handling capabilities.
 
+## Requirements
+
+- Node.js 20 or higher
+- PHP 8.0 or higher
+- Composer
+
 ## Features
 
 - 🎨 Dark/Light theme support
@@ -24,7 +30,7 @@ A modern, feature-rich chat interface for Large Language Models (LLM) with suppo
    ```bash
    cd llm-chat
    ```
-3. Install the dependencies:
+3. Install the dependencies (this will install both npm and composer dependencies):
    ```bash
    npm install
    ```

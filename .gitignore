@@ -1,11 +1,12 @@
 # Build output
-css/main.css
+public/css/main.css
 
 # Configuration
-js/config.js
+public/js/config.js
 
 # Dependencies
 node_modules/
+vendor/
 
 # Environment files
 .env
