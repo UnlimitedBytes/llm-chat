@@ -201,103 +201,132 @@ class ChatApp {
                 requestBody.tools = enabledTools;
             }
 
-            const response = await fetch(`${config.API_BASE_URL}/chat/completions`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${config.API_KEY}`,
-                    'HTTP-Referer': window.location.href,
-                    'X-Title': 'AI Chat Interface'
-                },
-                body: JSON.stringify(requestBody)
-            });
-
-            if (!response.ok) {
-                const error = await response.json();
-                throw new Error(error.error?.message || 'API request failed');
-            }
-
-            const reader = response.body.getReader();
-            const decoder = new TextDecoder();
+            let isComplete = false;
             let currentMessage = '';
+            let currentToolCall = null;
 
-            while (true) {
-                const { value, done } = await reader.read();
-                if (done) break;
+            while (!isComplete) {
+                const response = await fetch(`${config.API_BASE_URL}/chat/completions`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${config.API_KEY}`,
+                        'HTTP-Referer': window.location.href,
+                        'X-Title': 'AI Chat Interface'
+                    },
+                    body: JSON.stringify({
+                        ...requestBody,
+                        messages
+                    })
+                });
 
-                const chunk = decoder.decode(value);
-                const lines = chunk.split('\n').filter(line => line.trim());
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw new Error(error.error?.message || 'API request failed');
+                }
 
-                for (const line of lines) {
-                    if (!line.startsWith('data: ')) continue;
-                    if (line === 'data: [DONE]') break;
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
 
-                    // Skip processing comments
-                    if (line === 'data: OPENROUTER PROCESSING') continue;
+                while (true) {
+                    const { value, done } = await reader.read();
+                    if (done) break;
 
-                    try {
-                        const data = JSON.parse(line.slice(6));
+                    const chunk = decoder.decode(value);
+                    const lines = chunk.split('\n').filter(line => line.trim());
 
-                        // Validate data structure before accessing
-                        if (!data?.choices?.[0]?.delta) continue;
-
-                        const { delta } = data.choices[0];
-                        const finishReason = data.choices[0].finish_reason;
-
-                        if (delta.content) {
-                            currentMessage += delta.content;
-                            this.messageHandler.updateLastMessage(currentMessage, 'llm');
+                    for (const line of lines) {
+                        if (!line.startsWith('data: ')) continue;
+                        if (line === 'data: [DONE]') {
+                            if (!currentToolCall) isComplete = true;
+                            break;
                         }
+                        if (line === 'data: OPENROUTER PROCESSING') continue;
 
-                        if (delta.tool_calls) {
-                            const toolCallDelta = delta.tool_calls[0];
+                        try {
+                            const data = JSON.parse(line.slice(6));
+                            if (!data?.choices?.[0]?.delta) continue;
 
-                            if (!currentToolCall) {
-                                currentToolCall = {
-                                    ...toolCallDelta,
-                                    function: {
-                                        name: '',
-                                        arguments: ''
+                            const { delta } = data.choices[0];
+                            const finishReason = data.choices[0].finish_reason;
+
+                            if (delta.content) {
+                                currentMessage += delta.content;
+                                this.messageHandler.updateLastMessage(currentMessage, 'llm');
+                            }
+
+                            if (delta.tool_calls) {
+                                const toolCallDelta = delta.tool_calls[0];
+                                if (!currentToolCall) {
+                                    currentToolCall = {
+                                        id: toolCallDelta.id,
+                                        function: {
+                                            name: toolCallDelta.function?.name || '',
+                                            arguments: toolCallDelta.function?.arguments || ''
+                                        }
+                                    };
+                                } else {
+                                    if (toolCallDelta.function?.name) {
+                                        currentToolCall.function.name += toolCallDelta.function.name;
                                     }
-                                };
-                            }
-
-                            if (toolCallDelta.function) {
-                                if (toolCallDelta.function.name) {
-                                    currentToolCall.function.name += toolCallDelta.function.name;
-                                }
-                                if (toolCallDelta.function.arguments) {
-                                    currentToolCall.function.arguments += toolCallDelta.function.arguments;
+                                    if (toolCallDelta.function?.arguments) {
+                                        currentToolCall.function.arguments += toolCallDelta.function.arguments;
+                                    }
                                 }
                             }
-                        }
 
-                        if (finishReason === 'tool_calls') {
-                            if (currentToolCall) {
-                                const result = await this.handleToolCall(currentToolCall);
-                                if (result) {
-                                    messages.push({
-                                        role: 'tool',
-                                        name: currentToolCall.function.name,
-                                        content: result
-                                    });
-                                }
+                            // Handle tool call completion
+                            if (finishReason === 'tool_calls' && currentToolCall) {
+                                const toolResult = await this.handleToolCall(currentToolCall);
+
+                                // Add tool interaction to messages
+                                messages.push({
+                                    role: 'assistant',
+                                    content: null,
+                                    tool_calls: [{
+                                        id: currentToolCall.id,
+                                        type: 'function',
+                                        function: {
+                                            name: currentToolCall.function.name,
+                                            arguments: currentToolCall.function.arguments
+                                        }
+                                    }]
+                                });
+
+                                messages.push({
+                                    role: 'tool',
+                                    content: toolResult,
+                                    name: currentToolCall.function.name,
+                                    tool_call_id: currentToolCall.id
+                                });
+
+                                // Reset for next potential tool call
                                 currentToolCall = null;
+                                currentMessage = '';
+                                this.messageHandler.addMessage('', 'llm');
+                                break;
                             }
+
+                            if (finishReason === 'stop') {
+                                isComplete = true;
+                                if (currentMessage) {
+                                    this.messageHistory.push({
+                                        role: 'assistant',
+                                        content: currentMessage
+                                    });
+                                    this.storageManager.saveChat(this.messageHistory);
+                                }
+                                break;
+                            }
+                        } catch (e) {
+                            console.debug('Skipping invalid SSE data:', e);
+                            continue;
                         }
-                    } catch (e) {
-                        console.debug('Skipping invalid SSE data:', e);
-                        continue;
                     }
+
+                    if (isComplete) break;
                 }
             }
-
-            // After streaming is complete, save the updated history
-            this.messageHistory.push({
-                role: 'assistant',
-                content: currentMessage
-            });
-            this.storageManager.saveChat(this.messageHistory);
         } catch (error) {
             console.error('Chat completion error:', error);
             this.messageHandler.updateLastMessage(
